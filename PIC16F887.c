@@ -1,12 +1,12 @@
 /*
  * PIC16F887 - Maneja SONIDO
- * Recibe señales del ATmega para reproducir sonidos
+ * Recibe seÃ±ales del ATmega para reproducir sonidos
  */
 
 #include <built_in.h>
 
-// Pines de comunicación con ATmega
-#define SIGNAL_TO_ATMEGA   RB0_bit   // Salida: envía botón presionado
+// Pines de comunicaciÃ³n con ATmega
+#define SIGNAL_TO_ATMEGA   RB0_bit   // Salida: envÃ­a botÃ³n presionado
 #define SIGNAL_FROM_ATMEGA RC0_bit   // Entrada: recibe evento de juego
 
 // Pines de sonido
@@ -53,9 +53,9 @@ unsigned char medirPulso() {
         duracion++;
     }
 
-    if(duracion >= 50 && duracion <= 150) return 1;   // comió
-    if(duracion >= 450 && duracion <= 550) return 2;  // perdió
-    if(duracion >= 950 && duracion <= 1050) return 3; // ganó
+    if(duracion >= 50 && duracion <= 150) return 1;   // comiÃ³
+    if(duracion >= 450 && duracion <= 550) return 2;  // perdiÃ³
+    if(duracion >= 950 && duracion <= 1050) return 3; // ganÃ³
     return 0;
 }
 
@@ -64,9 +64,9 @@ void main() {
     TRISB = 0xFF;  // Puerto B como entrada (botones)
     TRISC = 0x00;  // Puerto C como salida (buzzer)
 
-    // Configurar pines específicos
-    TRISB0_bit = 0;  // RB0 como salida (señal a ATmega)
-    TRISC0_bit = 1;  // RC0 como entrada (señal de ATmega)
+    // Configurar pines especÃ­ficos
+    TRISB0_bit = 0;  // RB0 como salida (seÃ±al a ATmega)
+    TRISC0_bit = 1;  // RC0 como entrada (seÃ±al de ATmega)
     TRISC2_bit = 0;  // RC2 como salida (buzzer)
 
     // Inicializar
