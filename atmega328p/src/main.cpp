@@ -42,17 +42,12 @@ static const uint8_t PORT_FILAS[8] = {
     (1<<PD4),(1<<PD5),(1<<PD6),(1<<PD7)
 };
 
-// ============================================================
 // VELOCIDADES POR DIFICULTAD
-// ============================================================
 #define VEL_FACIL   200
 #define VEL_MEDIO   120
 #define VEL_DIFICIL 60
 
-// ============================================================
 // LETRAS
-// ============================================================
-
 static const uint8_t LETRA_S[8] PROGMEM = {
     0b00111100,
     0b01000010,
@@ -185,10 +180,7 @@ static const uint8_t SIGNO_EXCLAMACION[8] PROGMEM = {
     0b00000000
 };
 
-// ============================================================
 // CARITAS
-// ============================================================
-
 static const uint8_t CARA_TRISTE[8] PROGMEM = {
     0b00111100,
     0b01000010,
@@ -233,10 +225,7 @@ ISR(PCINT0_vect) {
     }
 }
 
-// ============================================================
 // FUNCIONES BÁSICAS
-// ============================================================
-
 static void delay_ms(uint16_t ms) {
     while (ms--) _delay_ms(1);
 }
@@ -252,10 +241,7 @@ static uint8_t rand_range(uint8_t max) {
     return rand8() % max;
 }
 
-// ============================================================
 // MATRIZ LED
-// ============================================================
-
 static void limpiarMatriz(void) {
     for (uint8_t row = 0; row < 8; row++) {
         PORTD = PORT_FILAS[row];
@@ -280,10 +266,7 @@ static void mostrarPalabra(const uint8_t *letra1, const uint8_t *letra2, const u
     mostrarImagen(letra3);
 }
 
-// ============================================================
-// ANIMACIÓN "SNAKE" DESPLAZÁNDOSE (SOLO UNA VEZ)
-// ============================================================
-
+// ANIMACIÓN "SNAKE" DESPLAZÁNDOSE
 static void mostrarSnakeDesplazando(void) {
     const uint8_t *letras[] = {LETRA_S, LETRA_N, LETRA_A, LETRA_K, LETRA_E};
     int16_t total = 5 * 8 + 8;
@@ -313,10 +296,7 @@ static void mostrarSnakeDesplazando(void) {
     }
 }
 
-// ============================================================
 // REFRESCAR PANTALLA DEL JUEGO
-// ============================================================
-
 static void refrescarPantalla(void) {
     for (uint16_t i = 0; i < snakeSpeed; i++) {
         for (uint8_t row = 0; row < 8; row++) {
@@ -337,10 +317,7 @@ static void refrescarPantalla(void) {
     }
 }
 
-// ============================================================
 // SONIDO HACIA PIC16F887
-// ============================================================
-
 static void sonidoComer(void) {
 
     PORTC |= (1 << SOUND_PIN);
@@ -362,10 +339,7 @@ static void sonidoGanar(void) {
     PORTC &= ~(1 << SOUND_PIN);
 }
 
-// ============================================================
 // INICIALIZACIÓN DEL JUEGO
-// ============================================================
-
 static void inicializarJuego(void) {
     switch (dificultadSeleccionada) {
         case FACIL:
@@ -424,10 +398,7 @@ static void generarComida(void) {
     } while (gameboard[foodRow][foodCol] > 0);
 }
 
-// ============================================================
 // ACTUALIZAR SERPIENTE
-// ============================================================
-
 static void actualizarSerpiente(void) {
     uint8_t newRow = snakeHeadRow;
     uint8_t newCol = snakeHeadCol;
@@ -503,10 +474,7 @@ static void actualizarSerpiente(void) {
     previousDirection = direction;
 }
 
-// ============================================================
 // MOSTRAR FINAL
-// ============================================================
-
 static void mostrarGameOver(void) {
     limpiarMatriz();
     sonidoPerder();
@@ -522,10 +490,7 @@ static void mostrarWin(void) {
     limpiarMatriz();
 }
 
-// ============================================================
 // MENÚ DE DIFICULTAD
-// ============================================================
-
 static void menuDificultad(void) {
     uint8_t seleccion = 0;
     uint8_t botonAnterior = 0;
@@ -590,10 +555,7 @@ static void menuDificultad(void) {
     }
 }
 
-// ============================================================
 // FUNCIÓN PRINCIPAL
-// ============================================================
-
 int main(void) {
     DDRD = 0xFF;
     PORTD = 0x00;
@@ -630,7 +592,7 @@ PORTC &= ~(1 << SOUND_PIN);
     
     sei();
     
-    // Mostrar "SNAKE" UNA SOLA VEZ al encender
+    // Mostrar "SNAKE" al encender
     limpiarMatriz();
     mostrarSnakeDesplazando();
     limpiarMatriz();
