@@ -1,0 +1,24 @@
+main
+	Sound_Init
+	medirPulso
+	playEatSound
+		Sound_Play
+			Get_Fosc_kHz
+			Mul_32x32_U
+			Div_32x32_U
+			Div_16X16_U
+			Delay_Cyc
+	playLoseSound
+		Sound_Play
+			Get_Fosc_kHz
+			Mul_32x32_U
+			Div_32x32_U
+			Div_16X16_U
+			Delay_Cyc
+	playWinSound
+		Sound_Play
+			Get_Fosc_kHz
+			Mul_32x32_U
+			Div_32x32_U
+			Div_16X16_U
+			Delay_Cyc

@@ -1,0 +1,11 @@
+0	1	mikroCPIC1618.exe -MSF -DBG -pP16F887 -DL -O11111114 -fo8 -N"C:\Users\Public\Documents\Mikroelektronika\mikroC PRO for PIC\Examples\Tarea2Pic\Tarea2Pic.mcppi" -SP"C:\Users\Public\Documents\Mikroelektronika\mikroC PRO for PIC\Defs\" -SP"C:\Users\Public\Documents\Mikroelektronika\mikroC PRO for PIC\Uses\P16\" -SP"C:\Users\Public\Documents\Mikroelektronika\mikroC PRO for PIC\Examples\Tarea2Pic\" -IP"C:\Users\Public\Documents\Mikroelektronika\mikroC PRO for PIC\Uses\P16\" "Tarea2Pic.c" "__Lib_Math.mcl" "__Lib_MathDouble.mcl" "__Lib_System.mcl" "__Lib_Delays.mcl" "__Lib_Sound.mcl"	 
+hint: 0	1139	Available RAM: 352 [bytes], Available ROM: 8192 [bytes]	 
+diagnostics: 0	122	Compilation Started	Tarea2Pic.c
+diagnostics: 114	123	Compiled Successfully	Tarea2Pic.c
+diagnostics: 0	127	All files Compiled in 47 ms	 
+hint: 0	1144	Used RAM (bytes): 23 (7%)  Free RAM (bytes): 329 (93%)	Used RAM (bytes): 23 (7%)  Free RAM (bytes): 329 (93%)
+hint: 0	1144	Used ROM (program words): 994 (12%)  Free ROM (program words): 7198 (88%)	Used ROM (program words): 994 (12%)  Free ROM (program words): 7198 (88%)
+diagnostics: 0	125	Project Linked Successfully	Tarea2Pic.mcppi
+diagnostics: 0	128	Linked in 16 ms	 
+diagnostics: 0	129	Project 'Tarea2Pic.mcppi' completed: 219 ms	 
+diagnostics: 0	103	Finished successfully: 09 jun. 2026, 20:57:14	Tarea2Pic.mcppi
