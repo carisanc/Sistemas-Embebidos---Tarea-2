@@ -1,41 +1,24 @@
-#define F_CPU 16000000UL
+#define F_CPU 8000000UL
 
 #include <avr/io.h>
-#include <avr/pgmspace.h>
+#include <avr/interrupt.h>
 #include <util/delay.h>
 #include <stdint.h>
+#include <avr/pgmspace.h>
 
+// Botones
 #define BTN_UP_PIN    PC0
 #define BTN_RIGHT_PIN PC1
 #define BTN_DOWN_PIN  PC2
 #define BTN_LEFT_PIN  PC3
-#define SIG_TO_PIC    PC4   // A4 - señal hacia PIC
+#define SOUND_PIN     PC4
 
-// Activo bajo 
-#define BTN_UP    (!(PINC & (1 << BTN_UP_PIN)))
-#define BTN_RIGHT (!(PINC & (1 << BTN_RIGHT_PIN)))
-#define BTN_DOWN  (!(PINC & (1 << BTN_DOWN_PIN)))
-#define BTN_LEFT  (!(PINC & (1 << BTN_LEFT_PIN)))
-
-#define SCROLL_SPEED 40
-
-#define DIFICIL 1
+// Dificultades
+#define FACIL   1
 #define MEDIO   2
-#define FACIL   3
+#define DIFICIL 3
 
-typedef struct {
-    uint16_t velocidadInicial;
-    uint16_t incrementoVelocidad;
-    uint8_t  puntuacionExtra;
-} DificultadConfig;
-
-static const DificultadConfig dificultades[4] PROGMEM = {
-    {0,   0,  0},
-    {150, 5,  2},   // DIFICIL
-    {250, 8,  1},   // MEDIO
-    {350, 12, 1}    // FACIL
-};
-
+// Variables globales
 static uint8_t  gameboard[8][8];
 static uint8_t  snakeHeadRow, snakeHeadCol;
 static uint8_t  foodRow, foodCol;
@@ -48,9 +31,10 @@ static uint8_t  gameRunning;
 static uint8_t  gameOver;
 static uint8_t  win;
 static uint8_t  dificultadSeleccionada;
-static uint16_t puntos;
-static uint8_t  ultimoBoton;
-
+static uint8_t  longitudParaGanar;
+static void sonidoComer(void);
+static void sonidoPerder(void);
+static void sonidoGanar(void);
 static uint16_t lfsr = 0xACE1u;
 
 static const uint8_t PORT_FILAS[8] = {
@@ -58,32 +42,200 @@ static const uint8_t PORT_FILAS[8] = {
     (1<<PD4),(1<<PD5),(1<<PD6),(1<<PD7)
 };
 
-static const uint8_t SIGNO[8]  PROGMEM = {0x00,0x04,0x02,0x01,0xB1,0x0A,0x04,0x00};
-static const uint8_t FELIZ[8]  PROGMEM = {0x00,0x3C,0x42,0xA5,0x81,0xA5,0x42,0x3C};
-static const uint8_t TRISTE[8] PROGMEM = {0x00,0x3C,0x42,0xA5,0x81,0x99,0x42,0x3C};
+// ============================================================
+// VELOCIDADES POR DIFICULTAD
+// ============================================================
+#define VEL_FACIL   200
+#define VEL_MEDIO   120
+#define VEL_DIFICIL 60
 
-static const uint8_t LETRA_A[8] PROGMEM = {0x18,0x24,0x42,0x7E,0x42,0x42,0x42,0x00};
-static const uint8_t LETRA_C[8] PROGMEM = {0x3C,0x42,0x40,0x40,0x40,0x42,0x3C,0x00};
-static const uint8_t LETRA_D[8] PROGMEM = {0x78,0x44,0x42,0x42,0x42,0x44,0x78,0x00};
-static const uint8_t LETRA_E[8] PROGMEM = {0x7E,0x40,0x40,0x7C,0x40,0x40,0x7E,0x00};
-static const uint8_t LETRA_F[8] PROGMEM = {0x7E,0x40,0x40,0x7C,0x40,0x40,0x40,0x00};
-static const uint8_t LETRA_I[8] PROGMEM = {0x3C,0x18,0x18,0x18,0x18,0x18,0x3C,0x00};
-static const uint8_t LETRA_K[8] PROGMEM = {0x42,0x44,0x48,0x70,0x48,0x44,0x42,0x00};
-static const uint8_t LETRA_M[8] PROGMEM = {0x42,0x66,0x5A,0x42,0x42,0x42,0x42,0x00};
-static const uint8_t LETRA_N[8] PROGMEM = {0x42,0x62,0x52,0x4A,0x46,0x42,0x42,0x00};
-static const uint8_t LETRA_S[8] PROGMEM = {0x3C,0x42,0x40,0x3C,0x02,0x42,0x3C,0x00};
+// ============================================================
+// LETRAS
+// ============================================================
 
-static const uint8_t CERO[8]   PROGMEM = {0x3C,0x42,0x46,0x4A,0x52,0x62,0x3C,0x00};
-static const uint8_t UNO[8]    PROGMEM = {0x08,0x18,0x08,0x08,0x08,0x08,0x1C,0x00};
-static const uint8_t DOS[8]    PROGMEM = {0x3C,0x42,0x02,0x1C,0x20,0x40,0x7E,0x00};
-static const uint8_t TRES[8]   PROGMEM = {0x7E,0x02,0x04,0x1C,0x02,0x42,0x3C,0x00};
-static const uint8_t CUATRO[8] PROGMEM = {0x04,0x0C,0x14,0x24,0x7E,0x04,0x04,0x00};
-static const uint8_t CINCO[8]  PROGMEM = {0x7E,0x40,0x7C,0x02,0x02,0x42,0x3C,0x00};
-static const uint8_t SEIS[8]   PROGMEM = {0x1C,0x20,0x40,0x7C,0x42,0x42,0x3C,0x00};
-static const uint8_t SIETE[8]  PROGMEM = {0x7E,0x02,0x04,0x08,0x10,0x10,0x10,0x00};
-static const uint8_t OCHO[8]   PROGMEM = {0x3C,0x42,0x42,0x3C,0x42,0x42,0x3C,0x00};
-static const uint8_t NUEVE[8]  PROGMEM = {0x3C,0x42,0x42,0x3E,0x02,0x04,0x38,0x00};
+static const uint8_t LETRA_S[8] PROGMEM = {
+    0b00111100,
+    0b01000010,
+    0b01000000,
+    0b00111100,
+    0b00000010,
+    0b01000010,
+    0b00111100,
+    0b00000000
+};
 
+static const uint8_t LETRA_N[8] PROGMEM = {
+    0b01000010,
+    0b01100010,
+    0b01010010,
+    0b01001010,
+    0b01000110,
+    0b01000010,
+    0b01000010,
+    0b00000000
+};
+
+static const uint8_t LETRA_A[8] PROGMEM = {
+    0b00011000,
+    0b00100100,
+    0b01000010,
+    0b01111110,
+    0b01000010,
+    0b01000010,
+    0b01000010,
+    0b00000000
+};
+
+static const uint8_t LETRA_K[8] PROGMEM = {
+    0b01000010,
+    0b01000100,
+    0b01001000,
+    0b01110000,
+    0b01001000,
+    0b01000100,
+    0b01000010,
+    0b00000000
+};
+
+static const uint8_t LETRA_E[8] PROGMEM = {
+    0b01111110,
+    0b01000000,
+    0b01000000,
+    0b01111100,
+    0b01000000,
+    0b01000000,
+    0b01111110,
+    0b00000000
+};
+
+static const uint8_t LETRA_F[8] PROGMEM = {
+    0b01111110,
+    0b01000000,
+    0b01000000,
+    0b01111100,
+    0b01000000,
+    0b01000000,
+    0b01000000,
+    0b00000000
+};
+
+static const uint8_t LETRA_C[8] PROGMEM = {
+    0b00111100,
+    0b01000010,
+    0b01000000,
+    0b01000000,
+    0b01000000,
+    0b01000010,
+    0b00111100,
+    0b00000000
+};
+
+static const uint8_t LETRA_D[8] PROGMEM = {
+    0b01111000,
+    0b01000100,
+    0b01000010,
+    0b01000010,
+    0b01000010,
+    0b01000100,
+    0b01111000,
+    0b00000000
+};
+
+static const uint8_t LETRA_I[8] PROGMEM = {
+    0b00111100,
+    0b00011000,
+    0b00011000,
+    0b00011000,
+    0b00011000,
+    0b00011000,
+    0b00111100,
+    0b00000000
+};
+
+static const uint8_t LETRA_M[8] PROGMEM = {
+    0b01000010,
+    0b01100110,
+    0b01011010,
+    0b01000010,
+    0b01000010,
+    0b01000010,
+    0b01000010,
+    0b00000000
+};
+
+static const uint8_t SIGNO_PREGUNTA[8] PROGMEM = {
+    0b00111100,
+    0b01000010,
+    0b00000010,
+    0b00001100,
+    0b00010000,
+    0b00000000,
+    0b00010000,
+    0b00000000
+};
+
+static const uint8_t SIGNO_EXCLAMACION[8] PROGMEM = {
+    0b00010000,
+    0b00111000,
+    0b00111000,
+    0b00010000,
+    0b00010000,
+    0b00000000,
+    0b00010000,
+    0b00000000
+};
+
+// ============================================================
+// CARITAS
+// ============================================================
+
+static const uint8_t CARA_TRISTE[8] PROGMEM = {
+    0b00111100,
+    0b01000010,
+    0b10100101,
+    0b10000001,
+    0b10011001,
+    0b10100101,
+    0b01000010,
+    0b00111100
+};
+
+static const uint8_t CARA_FELIZ[8] PROGMEM = {
+    0b00111100,
+    0b01000010,
+    0b10100101,
+    0b10000001,
+    0b10100101,
+    0b10011001,
+    0b01000010,
+    0b00111100
+};
+
+// ============================================================
+// INTERRUPCIÓN DE BOTONES (PARA EL JUEGO)
+// ============================================================
+
+ISR(PCINT0_vect) {
+    uint8_t boton = 0;
+    
+    if (!(PINC & (1 << PC0))) boton = 1;
+    else if (!(PINC & (1 << PC1))) boton = 2;
+    else if (!(PINC & (1 << PC2))) boton = 3;
+    else if (!(PINC & (1 << PC3))) boton = 4;
+    
+    if (boton != 0 && gameRunning) {
+        if ((boton == 1 && previousDirection != 3) ||
+            (boton == 2 && previousDirection != 4) ||
+            (boton == 3 && previousDirection != 1) ||
+            (boton == 4 && previousDirection != 2)) {
+            pendingDirection = boton;
+        }
+    }
+}
+
+// ============================================================
+// FUNCIONES BÁSICAS
+// ============================================================
 
 static void delay_ms(uint16_t ms) {
     while (ms--) _delay_ms(1);
@@ -100,182 +252,181 @@ static uint8_t rand_range(uint8_t max) {
     return rand8() % max;
 }
 
-static void mostrarImagen(const uint8_t *img) {
-    for (uint8_t k = 0; k < 30; k++) {
-        for (uint8_t j = 0; j < 8; j++) {
-            PORTD = PORT_FILAS[j];
-            PORTB = ~pgm_read_byte(&img[j]);
-            _delay_us(500);
-        }
-    }
-}
-
-static void mostrarImagenMs(const uint8_t *img, uint16_t ms) {
-    uint32_t ciclos = (uint32_t)ms * 1000UL / (8 * 5);
-    for (uint32_t k = 0; k < ciclos; k++) {
-        for (uint8_t j = 0; j < 8; j++) {
-            PORTD = PORT_FILAS[j];
-            PORTB = ~pgm_read_byte(&img[j]);
-            _delay_us(500);
-        }
-    }
-}
+// ============================================================
+// MATRIZ LED
+// ============================================================
 
 static void limpiarMatriz(void) {
-    PORTD = 0x00;
-    PORTB = 0xFF;
-    _delay_ms(1);
+    for (uint8_t row = 0; row < 8; row++) {
+        PORTD = PORT_FILAS[row];
+        PORTB = 0xFF;
+        _delay_us(50);
+    }
 }
 
-static void mostrarTextoDesplazando(const uint8_t * const letras[], uint8_t numLetras) {
-    int16_t total = (int16_t)numLetras * 8 + 8;
-    for (int16_t desp = 0; desp < total; desp++) {
-        for (uint8_t frame = 0; frame < SCROLL_SPEED; frame++) {
-            for (uint8_t col = 0; col < 8; col++) {
-                uint8_t colData = 0;
-                int16_t colOrig = desp + col;
-                if (colOrig >= 0 && colOrig < (int16_t)numLetras * 8) {
-                    uint8_t li = colOrig / 8;
-                    uint8_t ci = colOrig % 8;
-                    colData = pgm_read_byte(&letras[li][ci]);
+static void mostrarImagen(const uint8_t *img) {
+    for (uint8_t k = 0; k < 30; k++) {
+        for (uint8_t row = 0; row < 8; row++) {
+            PORTD = PORT_FILAS[row];
+            PORTB = ~pgm_read_byte(&img[row]);
+            _delay_us(300);
+        }
+    }
+}
+
+static void mostrarPalabra(const uint8_t *letra1, const uint8_t *letra2, const uint8_t *letra3) {
+    mostrarImagen(letra1);
+    mostrarImagen(letra2);
+    mostrarImagen(letra3);
+}
+
+// ============================================================
+// ANIMACIÓN "SNAKE" DESPLAZÁNDOSE (SOLO UNA VEZ)
+// ============================================================
+
+static void mostrarSnakeDesplazando(void) {
+    const uint8_t *letras[] = {LETRA_S, LETRA_N, LETRA_A, LETRA_K, LETRA_E};
+    int16_t total = 5 * 8 + 8;
+    
+    for (int16_t desplazamiento = 0; desplazamiento < total; desplazamiento++) {
+        for (uint8_t frame = 0; frame < 15; frame++) {
+            for (uint8_t fila = 0; fila < 8; fila++) {
+                uint8_t filaData = 0;
+                
+                for (uint8_t col = 0; col < 8; col++) {
+                    int16_t colOrigen = desplazamiento + col;
+                    if (colOrigen >= 0 && colOrigen < 5 * 8) {
+                        uint8_t letraIndex = colOrigen / 8;
+                        uint8_t bitIndex = 7 - (colOrigen % 8);
+                        uint8_t byteLetra = pgm_read_byte(&letras[letraIndex][fila]);
+                        if (byteLetra & (1 << bitIndex)) {
+                            filaData |= (1 << (7 - col));
+                        }
+                    }
                 }
-                PORTD = PORT_FILAS[col];
-                PORTB = ~colData;
-                _delay_us(100);
+                
+                PORTD = PORT_FILAS[fila];
+                PORTB = ~filaData;
+                _delay_us(80);
             }
         }
     }
 }
 
-static void dibujarTablero(void) {
-    for (uint8_t row = 0; row < 8; row++) {
-        for (uint8_t col = 0; col < 8; col++) {
+// ============================================================
+// REFRESCAR PANTALLA DEL JUEGO
+// ============================================================
+
+static void refrescarPantalla(void) {
+    for (uint16_t i = 0; i < snakeSpeed; i++) {
+        for (uint8_t row = 0; row < 8; row++) {
+            uint8_t rowData = 0;
+            for (uint8_t col = 0; col < 8; col++) {
+                if (gameboard[row][col] > 0) {
+                    rowData |= (1 << (7 - col));
+                }
+            }
+            if (foodRow < 8 && foodCol < 8 && row == foodRow) {
+                rowData |= (1 << (7 - foodCol));
+            }
             PORTD = PORT_FILAS[row];
-            PORTB = (gameboard[row][col] > 0) ? ~(1 << (7 - col)) : 0xFF;
-            _delay_us(50);
+            PORTB = ~rowData;
+            _delay_us(60);
         }
+        _delay_us(60);
     }
 }
 
-/*
- * Envía evento al PIC mediante un pulso HIGH en PC4:
- *   1 (comio)  -> 100 ms
- *   2 (perdio) -> 500 ms
- *   3 (gano)   -> 1000 ms
- */
-static void enviarEventoPIC(uint8_t evento) {
-    uint16_t duracion = 0;
-    switch (evento) {
-        case 1: duracion = 100;  break;
-        case 2: duracion = 500;  break;
-        case 3: duracion = 1000; break;
-        default: return;
-    }
-    DDRC  |=  (1 << SIG_TO_PIC);
-    PORTC |=  (1 << SIG_TO_PIC);
-    delay_ms(duracion);
-    PORTC &= ~(1 << SIG_TO_PIC);
-    DDRC  &= ~(1 << SIG_TO_PIC);
+// ============================================================
+// SONIDO HACIA PIC16F887
+// ============================================================
+
+static void sonidoComer(void) {
+
+    PORTC |= (1 << SOUND_PIN);
+    delay_ms(10);
+    PORTC &= ~(1 << SOUND_PIN);
 }
 
-static uint8_t leerBoton(void) {
-    if (BTN_UP)    return 1;
-    if (BTN_RIGHT) return 2;
-    if (BTN_DOWN)  return 3;
-    if (BTN_LEFT)  return 4;
-    return 0;
+static void sonidoPerder(void) {
+
+    PORTC |= (1 << SOUND_PIN);
+    delay_ms(90);
+    PORTC &= ~(1 << SOUND_PIN);
 }
 
-static uint8_t esperarCualquierBoton(void) {
-    uint8_t b;
-    do {
-        b = leerBoton();
-        _delay_ms(10);
-    } while (b == 0);
-    delay_ms(50);
-    return b;
-}
+static void sonidoGanar(void) {
 
-static void mostrarDificultad(void) {
-    limpiarMatriz();
+    PORTC |= (1 << SOUND_PIN);
     delay_ms(200);
-    switch (dificultadSeleccionada) {
-        case DIFICIL:
-            mostrarImagen(LETRA_D);
-            mostrarImagen(LETRA_I);
-            mostrarImagen(LETRA_F);
-            break;
-        case MEDIO:
-            mostrarImagen(LETRA_M);
-            mostrarImagen(LETRA_E);
-            mostrarImagen(LETRA_D);
-            break;
-        case FACIL:
-            mostrarImagen(LETRA_F);
-            mostrarImagen(LETRA_A);
-            mostrarImagen(LETRA_C);
-            break;
-    }
-    delay_ms(800);
+    PORTC &= ~(1 << SOUND_PIN);
 }
 
-static void seleccionarDificultad(void) {
-    dificultadSeleccionada = MEDIO;
-    mostrarDificultad();
-
-    while (1) {
-        uint8_t b = leerBoton();
-        if (b == 1) {                    // UP -> Difícil
-            dificultadSeleccionada = DIFICIL;
-            mostrarDificultad();
-            delay_ms(200);
-        } else if (b == 3) {             // DOWN -> Fácil
-            dificultadSeleccionada = FACIL;
-            mostrarDificultad();
-            delay_ms(200);
-        } else if (b == 2 || b == 4) {   // RIGHT o LEFT -> confirmar
-            delay_ms(200);
-            return;
-        }
-        delay_ms(50);
-    }
-}
+// ============================================================
+// INICIALIZACIÓN DEL JUEGO
+// ============================================================
 
 static void inicializarJuego(void) {
-    snakeSpeed = pgm_read_word(&dificultades[dificultadSeleccionada].velocidadInicial);
-    puntos     = 0;
+    switch (dificultadSeleccionada) {
+        case FACIL:
+            snakeSpeed = VEL_FACIL;
+            longitudParaGanar = 5;   // 2 frutas (3 + 2 = 5)
+            break;
+        case MEDIO:
+            snakeSpeed = VEL_MEDIO;
+            longitudParaGanar = 6;   // 3 frutas (3 + 3 = 6)
+            break;
+        case DIFICIL:
+            snakeSpeed = VEL_DIFICIL;
+            longitudParaGanar = 8;   // 5 frutas (3 + 5 = 8)
+            break;
+        default:
+            snakeSpeed = VEL_MEDIO;
+            longitudParaGanar = 6;
+            break;
+    }
+    
+    gameRunning = 1;
+    gameOver = 0;
+    win = 0;
 
     for (uint8_t r = 0; r < 8; r++)
         for (uint8_t c = 0; c < 8; c++)
             gameboard[r][c] = 0;
 
-    snakeHeadRow     = rand_range(8);
-    snakeHeadCol     = rand_range(8);
-    snakeLength      = 3;
-    direction        = 1;
-    pendingDirection = 1;
-    previousDirection= 1;
-    gameOver         = 0;
-    win              = 0;
-    ultimoBoton      = 0;
+    snakeHeadRow = 3;
+    snakeHeadCol = 3;
+    snakeLength = 3;
+    direction = 2;
+    pendingDirection = 2;
+    previousDirection = 2;
+}
 
-    for (uint8_t i = 0; i < snakeLength; i++) {
-        int8_t row = (int8_t)snakeHeadRow - (int8_t)i;
-        if (row < 0) row += 8;
-        gameboard[(uint8_t)row][snakeHeadCol] = snakeLength - i;
-    }
-
-    foodRow = 255;
-    foodCol = 255;
+static void dibujarInicio(void) {
+    gameboard[3][3] = 3;
+    gameboard[3][2] = 2;
+    gameboard[3][1] = 1;
+    foodRow = 5;
+    foodCol = 5;
 }
 
 static void generarComida(void) {
-    if (snakeLength >= 64) { win = 1; return; }
+    if (snakeLength >= longitudParaGanar) {
+        sonidoGanar();
+        win = 1;
+        gameRunning = 0;
+        return;
+    }
+    
     do {
         foodRow = rand_range(8);
         foodCol = rand_range(8);
     } while (gameboard[foodRow][foodCol] > 0);
 }
+
+// ============================================================
+// ACTUALIZAR SERPIENTE
+// ============================================================
 
 static void actualizarSerpiente(void) {
     uint8_t newRow = snakeHeadRow;
@@ -284,45 +435,67 @@ static void actualizarSerpiente(void) {
     direction = pendingDirection;
 
     switch (direction) {
-        case 1: newRow = (newRow > 0) ? newRow - 1 : 7; break;
-        case 2: newCol = (newCol < 7) ? newCol + 1 : 0; break;
-        case 3: newRow = (newRow < 7) ? newRow + 1 : 0; break;
-        case 4: newCol = (newCol > 0) ? newCol - 1 : 7; break;
+        case 1:
+            if (newRow == 0) {
+                gameOver = 1;
+                gameRunning = 0;
+                return;
+            }
+            newRow--;
+            break;
+        case 2:
+            if (newCol == 7) {
+                gameOver = 1;
+                gameRunning = 0;
+                return;
+            }
+            newCol++;
+            break;
+        case 3:
+            if (newRow == 7) {
+                gameOver = 1;
+                gameRunning = 0;
+                return;
+            }
+            newRow++;
+            break;
+        case 4:
+            if (newCol == 0) {
+                gameOver = 1;
+                gameRunning = 0;
+                return;
+            }
+            newCol--;
+            break;
     }
 
     uint8_t ateFood = (newRow == foodRow && newCol == foodCol);
 
     if (gameboard[newRow][newCol] > 0 && !ateFood) {
-        gameOver    = 1;
+        gameOver = 1;
         gameRunning = 0;
-        enviarEventoPIC(2);
         return;
     }
 
     for (uint8_t r = 0; r < 8; r++)
         for (uint8_t c = 0; c < 8; c++)
-            if (gameboard[r][c] > 0) gameboard[r][c]--;
+            if (gameboard[r][c] > 0)
+                gameboard[r][c]--;
 
     snakeHeadRow = newRow;
     snakeHeadCol = newCol;
 
     if (ateFood) {
-        enviarEventoPIC(1);
+        sonidoComer();
         snakeLength++;
-        puntos += pgm_read_byte(&dificultades[dificultadSeleccionada].puntuacionExtra);
-
-        uint16_t inc = pgm_read_word(&dificultades[dificultadSeleccionada].incrementoVelocidad);
-        uint16_t vel = pgm_read_word(&dificultades[dificultadSeleccionada].velocidadInicial);
-        snakeSpeed = vel - (snakeLength - 3) * inc;
-        if (snakeSpeed < 30) snakeSpeed = 30;
-
+        
         for (uint8_t r = 0; r < 8; r++)
             for (uint8_t c = 0; c < 8; c++)
-                if (gameboard[r][c] > 0) gameboard[r][c]++;
-
+                if (gameboard[r][c] > 0)
+                    gameboard[r][c]++;
+        
         gameboard[snakeHeadRow][snakeHeadCol] = snakeLength;
-        foodRow = 255;
-        foodCol = 255;
+        generarComida();
     } else {
         gameboard[snakeHeadRow][snakeHeadCol] = snakeLength;
     }
@@ -330,156 +503,168 @@ static void actualizarSerpiente(void) {
     previousDirection = direction;
 }
 
-static void mostrarNumero(uint8_t num) {
-    const uint8_t *nums[10] = {
-        CERO, UNO, DOS, TRES, CUATRO,
-        CINCO, SEIS, SIETE, OCHO, NUEVE
-    };
-    if (num <= 9) mostrarImagen(nums[num]);
-}
-
-static void mostrarPuntuacionFinal(void) {
-    uint8_t decenas  = puntos / 10;
-    uint8_t unidades = puntos % 10;
-    if (decenas > 0) { mostrarNumero(decenas); delay_ms(500); }
-    mostrarNumero(unidades);
-    delay_ms(1000);
-}
-
-static void mostrarMensajeBienvenida(void) {
-    const uint8_t *letras[] = {LETRA_S, LETRA_N, LETRA_A, LETRA_K, LETRA_E};
-    mostrarTextoDesplazando(letras, 5);
-    delay_ms(500);
-    mostrarImagen(SIGNO);
-    delay_ms(800);
-    limpiarMatriz();
-}
+// ============================================================
+// MOSTRAR FINAL
+// ============================================================
 
 static void mostrarGameOver(void) {
-    mostrarImagenMs(TRISTE, 1000);
-    mostrarPuntuacionFinal();
-    delay_ms(1000);
+    limpiarMatriz();
+    sonidoPerder();
+    mostrarImagen(CARA_TRISTE);
+    delay_ms(500);
     limpiarMatriz();
 }
 
 static void mostrarWin(void) {
-    mostrarImagenMs(FELIZ, 1000);
-    mostrarPuntuacionFinal();
-    delay_ms(1000);
+    limpiarMatriz();
+    mostrarImagen(CARA_FELIZ);
+    delay_ms(500);
     limpiarMatriz();
 }
 
+// ============================================================
+// MENÚ DE DIFICULTAD
+// ============================================================
+
+static void menuDificultad(void) {
+    uint8_t seleccion = 0;
+    uint8_t botonAnterior = 0;
+    dificultadSeleccionada = FACIL;
+    
+    // Mostrar "?" velocidad normal
+    limpiarMatriz();
+    mostrarImagen(SIGNO_PREGUNTA);
+    delay_ms(100);
+    
+    while (1) {
+        uint8_t boton = 0;
+        if (!(PINC & (1 << PC0))) boton = 1;
+        else if (!(PINC & (1 << PC1))) boton = 2;
+        else if (!(PINC & (1 << PC2))) boton = 3;
+        else if (!(PINC & (1 << PC3))) boton = 4;
+        
+        // Detección por FLANCO
+        if (boton != 0 && boton != botonAnterior) {
+            if (boton == 1) {  // FACIL
+                dificultadSeleccionada = FACIL;
+                limpiarMatriz();
+                mostrarPalabra(LETRA_F, LETRA_A, LETRA_C);
+                delay_ms(100);
+                seleccion = 1;
+                
+                limpiarMatriz();
+                mostrarImagen(SIGNO_EXCLAMACION);
+                delay_ms(100);
+            }
+            else if (boton == 2) {  // MEDIO
+                dificultadSeleccionada = MEDIO;
+                limpiarMatriz();
+                mostrarPalabra(LETRA_M, LETRA_E, LETRA_D);
+                delay_ms(100);
+                seleccion = 1;
+                
+                limpiarMatriz();
+                mostrarImagen(SIGNO_EXCLAMACION);
+                delay_ms(100);
+            }
+            else if (boton == 3) {  // DIFICIL
+                dificultadSeleccionada = DIFICIL;
+                limpiarMatriz();
+                mostrarPalabra(LETRA_D, LETRA_I, LETRA_F);
+                delay_ms(100);
+                seleccion = 1;
+                
+                limpiarMatriz();
+                mostrarImagen(SIGNO_EXCLAMACION);
+                delay_ms(100);
+            }
+            else if (boton == 4 && seleccion == 1) {  // CONFIRMAR
+                limpiarMatriz();
+                delay_ms(100);
+                return;
+            }
+        }
+        
+        botonAnterior = boton;
+        delay_ms(30);
+    }
+}
+
+// ============================================================
+// FUNCIÓN PRINCIPAL
+// ============================================================
 
 int main(void) {
-    // Puertos de la matriz LED
-    DDRD  = 0xFF;
+    DDRD = 0xFF;
     PORTD = 0x00;
-    DDRB  = 0xFF;
+    DDRB = 0xFF;
     PORTB = 0xFF;
+    
+    DDRC = 0x00;
 
-    // PC0..PC3: entradas con pull-up
-    // PC4: salida hacia PIC 
-    DDRC  = 0x00;
-    PORTC = (1 << PC0) | (1 << PC1) | (1 << PC2) | (1 << PC3);
+// PC4 como salida hacia PIC
+DDRC |= (1 << SOUND_PIN);
 
-    // Semilla PRNG con ADC flotante (canal 7)
-    ADMUX  = (1 << REFS0) | 7;
+PORTC = (1 << PC0) |
+        (1 << PC1) |
+        (1 << PC2) |
+        (1 << PC3);
+
+PORTC &= ~(1 << SOUND_PIN);
+    
+    PCICR |= (1 << PCIE0);
+    PCMSK0 |= (1 << PC0) | (1 << PC1) | (1 << PC2) | (1 << PC3);
+    
+    ADMUX = (1 << REFS0) | 7;
     ADCSRA = (1 << ADEN) | (1 << ADSC) | (1 << ADPS2) | (1 << ADPS1) | (1 << ADPS0);
+    for (uint8_t i = 0; i < 50; i++) {
+        _delay_us(10);
+    }
     while (ADCSRA & (1 << ADSC));
     lfsr = ADC ^ 0xA5B6;
     ADCSRA &= ~(1 << ADEN);
-
+    
+    for (uint8_t i = 0; i < 30; i++) {
+        rand8();
+    }
+    
+    sei();
+    
+    // Mostrar "SNAKE" UNA SOLA VEZ al encender
     limpiarMatriz();
-
-    // Animación de bienvenida
-    mostrarMensajeBienvenida();
-
+    mostrarSnakeDesplazando();
+    limpiarMatriz();
+    delay_ms(200);
+    
+    // Bucle principal del juego
     while (1) {
-
-        // 1. Esperar cualquier botón para entrar al menú de dificultad
-        esperarCualquierBoton();
-
-        // 2. Seleccionar dificultad (UP/DOWN para cambiar, RIGHT/LEFT para confirmar)
-        seleccionarDificultad();
-
-        // 3. Inicializar y jugar
+        // Menú de dificultad
+        menuDificultad();
+        
+        // Iniciar juego
         inicializarJuego();
-        generarComida();
-        gameRunning = 1;
-        gameOver    = 0;
-        win         = 0;
-
+        dibujarInicio();
+        
         while (gameRunning) {
-
-            // Leer dirección
-            uint8_t boton = leerBoton();
-            if (boton != 0 && boton != ultimoBoton) {
-                if ((boton == 1 && previousDirection != 3) ||
-                    (boton == 2 && previousDirection != 4) ||
-                    (boton == 3 && previousDirection != 1) ||
-                    (boton == 4 && previousDirection != 2)) {
-                    pendingDirection = boton;
-                }
-                ultimoBoton = boton;
-            } else if (boton == 0) {
-                ultimoBoton = 0;
-            }
-
-            // Generar comida si no existe
-            if (foodRow == 255 || foodCol == 255) {
-                generarComida();
-                if (win) {
-                    gameRunning = 0;
-                    enviarEventoPIC(3);
-                    mostrarWin();
-                    break;
-                }
-            }
-
-            // Retardo con refresco de pantalla
-            for (uint16_t i = 0; i < snakeSpeed; i++) {
-                PORTD = PORT_FILAS[foodRow];
-                PORTB = ~(1 << (7 - foodCol));
-                _delay_us(500);
-                dibujarTablero();
-                _delay_us(500);
-
-                uint8_t b2 = leerBoton();
-                if (b2 != 0 && b2 != ultimoBoton) {
-                    if ((b2 == 1 && previousDirection != 3) ||
-                        (b2 == 2 && previousDirection != 4) ||
-                        (b2 == 3 && previousDirection != 1) ||
-                        (b2 == 4 && previousDirection != 2)) {
-                        pendingDirection = b2;
-                    }
-                    ultimoBoton = b2;
-                }
-            }
-
+            refrescarPantalla();
             actualizarSerpiente();
-
-            if (snakeLength >= 64) {
-                win         = 1;
+            
+            if (snakeLength >= longitudParaGanar) {
+                sonidoGanar();
                 gameRunning = 0;
-                enviarEventoPIC(3);
                 mostrarWin();
                 break;
             }
-
+            
             if (gameOver) {
                 gameRunning = 0;
                 mostrarGameOver();
                 break;
             }
         }
-
-        // 4. Esperar cualquier botón para reiniciar
-        delay_ms(500);
-        esperarCualquierBoton();
-
-        // 5. Mostrar bienvenida y repetir
-        mostrarMensajeBienvenida();
+        
+        delay_ms(800);
     }
-
+    
     return 0;
 }
